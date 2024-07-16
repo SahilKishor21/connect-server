@@ -30,28 +30,29 @@ const loginController = expressAsyncHandler( async (req,res) => {
 
 //REGISTRATION
 const registerController = expressAsyncHandler(async (req, res) => {
-    const {name, email,password} = req.body;
+    console.log(req.body);
+    const { name, email, password } = req.body;
 
     //check
     if(!name || !email || !password  ){
         res.send(400);
-        throw Error("All necessory input feilds have not been filled");
+        throw Error("All necessory input fields have not been filled");
     }
 
     //Already a user
-     const Userexist = await User.findone({email});
+     const Userexist = await User.find({ email });
     if (Userexist){
         throw new Error("User already exists");
-    }
+    } 
 
     //Name not available 
-    const userNameExist = await User.findone({name});
+     const userNameExist = await User.find({ name });
     if (userNameExist){
         throw new Error("UserName already taken");
     }
 
     // adding user to Database
-    const user = await UserModel.create ({name, email, password});
+    const user = await User.create({name, email, password });
     if (user){
         res.status(201).json({
             _id: user._id,
@@ -85,3 +86,4 @@ const fetchAllUsersController = expressAsyncHandler(async (req, res) => {
 });
 
 module.exports = { loginController, registerController, fetchAllUsersController};
+

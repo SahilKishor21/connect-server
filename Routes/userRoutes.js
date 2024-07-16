@@ -5,6 +5,6 @@ const {protect} = require("../middleware/authMiddleware");
 
 Router.post("/login", loginController);
 Router.post("/register", registerController);
-Router.get("/fetchUsers",  fetchAllUsersController);
+Router.get("/fetchUsers", protect,  fetchAllUsersController);
 
 module.exports = Router;
