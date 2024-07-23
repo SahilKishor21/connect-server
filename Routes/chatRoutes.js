@@ -2,6 +2,8 @@ const express = require("express");
 const Router = express.Router();
 const {
     createGroupChat,
+    accessChat,
+    fetchChats,
     groupExit,
     fetchGroups,
 } = require("../Controllers/chatController");

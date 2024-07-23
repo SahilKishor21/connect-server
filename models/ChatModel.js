@@ -1,9 +1,8 @@
-const { default: mongoose } = require("mongoose");
 
 const mongoose = require("mongoose");
 const chatModel = mongoose.Schema({
-    chatName : {type : string},
-    isGroupChat : {type : boolean},
+    chatName : {type : String},
+    isGroupChat : {type : Boolean},
     users : [
         {
             type : mongoose.Schema.Types.ObjectId,   // giving id to user
