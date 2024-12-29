@@ -15,6 +15,8 @@ dotenv.config();
 
 app.use(express.json());
 
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 const userRoutes = require("./Routes/userRoutes");
 const chatRoutes = require("./Routes/chatRoutes");
 const messageRoutes = require("./Routes/messageRoutes");
@@ -32,7 +34,7 @@ connectDb();
 app.get("/", (req, res) => {
   res.send("API is running123");
 });
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 
 
 app.use("/user", userRoutes);

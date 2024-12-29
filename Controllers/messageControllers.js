@@ -34,7 +34,11 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
 
   const newMessage = {
     sender: req.user._id,
+<<<<<<< HEAD
     receiver: receiverId, 
+=======
+    receiver: receiverId, // Add receiver ID
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     content: content,
     chat: chatId,
   };
@@ -43,7 +47,11 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
     let message = await Message.create(newMessage);
 
     message = await message.populate("sender", "name pic");
+<<<<<<< HEAD
     message = await message.populate("receiver", "name pic"); 
+=======
+    message = await message.populate("receiver", "name pic"); // Populate receiver
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     message = await message.populate("chat");
     message = await User.populate(message, {
       path: "chat.users",
@@ -58,7 +66,11 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // Uploading file messages to Cloudinary and saving it to database
+=======
+// Upload file message to Cloudinary and save to database
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
 const uploadFileMessage = expressAsyncHandler(async (req, res) => {
   const { chatId, receiverId } = req.body;
 
@@ -68,30 +80,52 @@ const uploadFileMessage = expressAsyncHandler(async (req, res) => {
   }
 
   try {
+<<<<<<< HEAD
     // Uploading file to Cloudinary
+=======
+    // Upload file to Cloudinary
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     const uploadedFile = await cloudinary.uploader.upload(req.file.path, {
       resource_type: "auto",
       folder: "chat_uploads",
     });
 
+<<<<<<< HEAD
     
+=======
+    // Read the file content (for small files like images/PDFs)
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     const fileBuffer = req.file.buffer; // Use multer's buffer to get file content
 
     // Prepare message data with content or file buffer
     const newMessage = {
       sender: req.user._id,
+<<<<<<< HEAD
       receiver: receiverId, 
       content: uploadedFile.secure_url, 
       isFile: true,
       fileType: req.file.mimetype,
       fileName: req.file.originalname,
       fileContent: fileBuffer.toString("base64"), 
+=======
+      receiver: receiverId, // Add receiver ID
+      content: uploadedFile.secure_url, // Still save the Cloudinary URL
+      chat: chatId,
+      isFile: true,
+      fileType: req.file.mimetype,
+      fileName: req.file.originalname,
+      fileContent: fileBuffer.toString("base64"), // Base64-encoded file content
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     };
 
     let message = await Message.create(newMessage);
 
     message = await message.populate("sender", "name pic");
+<<<<<<< HEAD
     message = await message.populate("receiver", "name pic"); 
+=======
+    message = await message.populate("receiver", "name pic"); // Populate receiver
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     message = await message.populate("chat");
     message = await User.populate(message, {
       path: "chat.users",
@@ -107,12 +141,22 @@ const uploadFileMessage = expressAsyncHandler(async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 
 const getRecipientName = async (req, res) => {
   const { chat_id } = req.params; 
   const userId = req.user._id; 
   try {
     // Fetching the chat by ID
+=======
+// Get Recipient Name
+const getRecipientName = async (req, res) => {
+  const { chat_id } = req.params; // Extract chat ID from request params
+  const userId = req.user._id; // Extract logged-in user ID from middleware
+
+  try {
+    // Fetch the chat by ID
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
     const chat = await Chat.findById(chat_id).populate("users", "name");
 
     if (!chat) {

@@ -19,6 +19,7 @@ router.route("/").post(protect, sendMessage);
 // Route to handle single file upload in chat
 router.route("/upload").post(protect, upload.single("file"), handleUploadError, uploadFileMessage);
 
+<<<<<<< HEAD
 // Route to handle multiple file uploads
 router.post("/upload-multiple", protect, upload.array("files", 5), handleUploadError, async (req, res) => {
   try {
@@ -29,6 +30,22 @@ router.post("/upload-multiple", protect, upload.array("files", 5), handleUploadE
   }
 });
 
+=======
+// Single file upload
+router.post("/upload", protect, upload.single("file"), handleUploadError, uploadFileMessage);
+
+// Multiple files upload
+router.post("/upload-multiple", protect, upload.array("files", 5), handleUploadError, async (req, res) => {
+  try {
+    const fileUrls = req.files.map(file => file.path);
+    res.json({ success: true, files: fileUrls });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+>>>>>>> 76e2c44 (updated FileUploadiing Functionality)
 // Route to get the recipient name
 router.get("/recipient/:chat_id", protect, getRecipientName);
 
