@@ -1,12 +1,12 @@
 const generateToken = require("../Config/generateToken");
-const UserModel = require("../models/userModel");
+const UserModel = require("../modals/userModel");
 const expressAsyncHandler = require("express-async-handler");
 // Login
 const loginController = expressAsyncHandler(async (req, res) => {
   console.log(req.body);
   const { name, password } = req.body;
 
-  const user = await UserModel.find({ name });
+  const user = await UserModel.findOne({ name });
 
   console.log("fetched user Data", user);
   console.log(await user.matchPassword(password));
@@ -30,7 +30,7 @@ const loginController = expressAsyncHandler(async (req, res) => {
 const registerController = expressAsyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
 
-  // check for all fields
+  //  all fields
   if (!name || !email || !password) {
     res.send(400);
     throw Error("All necessary input fields have not been filled");

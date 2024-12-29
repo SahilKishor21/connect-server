@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const { default: mongoose } = require("mongoose");
 const app = express();
 const cors = require("cors");
+const path = require("path");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 app.use(
@@ -31,6 +32,8 @@ connectDb();
 app.get("/", (req, res) => {
   res.send("API is running123");
 });
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 
 app.use("/user", userRoutes);
 app.use("/chat", chatRoutes);
