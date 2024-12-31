@@ -22,7 +22,9 @@ const io = socketIO(server, {
 
 app.use(
   cors({
-    origin: ["https://connect-chat-online.vercel.app/", "http://localhost:3000"]
+    origin: ["https://connect-chat-online.vercel.app/", "http://localhost:3000"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
   })
 );
 dotenv.config();
