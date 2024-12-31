@@ -10,11 +10,11 @@ const messageModel = mongoose.Schema(
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true, // Ensure receiver is always specified
+      required: true, 
     },
     content: {
       type: String,
-      trim: true, // Text content, used for regular text messages
+      trim: true,
     },
     chat: {
       type: mongoose.Schema.Types.ObjectId,
@@ -22,40 +22,40 @@ const messageModel = mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["text", "file", "audio", "image"], // Added image and audio types
+      enum: ["text", "file", "audio", "image"], 
       default: "text",
     },
     fileUrl: {
-      type: String, // Stores the file URL for file messages
+      type: String, 
       required: function () {
         return this.type === "file" || this.type === "audio" || this.type === "image";
       },
     },
     fileType: {
-      type: String, // MIME type of the file (e.g., 'image/jpeg', 'audio/webm')
+      type: String, 
       required: function () {
         return this.type === "file" || this.type === "audio" || this.type === "image";
       },
     },
     fileName: { 
-      type: String, // Original file name
+      type: String, 
     },
     fileSize: { 
-      type: Number, // File size in bytes
+      type: Number, 
     },
     isFile: { 
       type: Boolean, 
-      default: false, // Indicates if it's a file message
+      default: false, 
     },
     fileContent: {
-      type: String, // Base64-encoded content for inline previews (optional)
+      type: String, 
       required: function () {
-        return this.type === "image" || this.type === "audio"; // For image/audio preview
+        return this.type === "image" || this.type === "audio"; 
       },
     },
   },
   {
-    timestamps: true, // To keep track of when messages are sent
+    timestamps: true, 
   }
 );
 
