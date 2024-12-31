@@ -14,7 +14,7 @@ const server = http.createServer(app);
 
 const io = socketIO(server, {
   cors: {
-    origin: "*", 
+    origin: ["https://connect-chi-inky.vercel.app", "http://localhost:3000"], 
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -22,7 +22,7 @@ const io = socketIO(server, {
 
 app.use(
   cors({
-    origin: "https://connect-chi-inky.vercel.app/",
+    origin: ["https://connect-chi-inky.vercel.app", "http://localhost:3000"]
   })
 );
 dotenv.config();
