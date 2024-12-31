@@ -22,7 +22,7 @@ const io = socketIO(server, {
 
 app.use(
   cors({
-    origin: "*",
+    origin: "https://connect-chi-inky.vercel.app/",
   })
 );
 dotenv.config();
