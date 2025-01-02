@@ -9,7 +9,6 @@ const socketIO = require("socket.io");
 const jwt = require("jsonwebtoken");
 
 const app = express();
-app.set('io', io);
 const server = http.createServer(app);
 
 dotenv.config();
@@ -33,6 +32,8 @@ const io = socketIO(server, {
     credentials: true,
   },
 });
+
+app.set('io', io);
 
 app.use(
   cors({
