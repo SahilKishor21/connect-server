@@ -2,7 +2,7 @@ const expressAsyncHandler = require("express-async-handler");
 const Message = require("../modals/messageModel");
 const User = require("../modals/userModel");
 const Chat = require("../modals/chatModel");
-const cloudinary = require("cloudinary").v2; // Ensure Cloudinary SDK is installed
+const cloudinary = require("cloudinary").v2;
 
 // Cloudinary configuration
 cloudinary.config({
@@ -11,11 +11,16 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+
+const emitSocketEvent = (io, roomId, eventName, data) => {
+  io.to(roomId).emit(eventName, data);
+};
+
 const allMessages = expressAsyncHandler(async (req, res) => {
   try {
     const messages = await Message.find({ chat: req.params.chatId })
       .populate("sender", "name email")
-      .populate("receiver", "name email") // Populate receiver field
+      .populate("receiver", "name email")
       .populate("chat");
     res.json(messages);
   } catch (error) {
@@ -34,7 +39,7 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
 
   const newMessage = {
     sender: req.user._id,
-    receiver: receiverId, 
+    receiver: receiverId,
     content: content,
     chat: chatId,
   };
@@ -43,7 +48,7 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
     let message = await Message.create(newMessage);
 
     message = await message.populate("sender", "name pic");
-    message = await message.populate("receiver", "name pic"); 
+    message = await message.populate("receiver", "name pic");
     message = await message.populate("chat");
     message = await User.populate(message, {
       path: "chat.users",
@@ -51,6 +56,22 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
     });
 
     await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
+
+    const io = req.app.get('io');
+    emitSocketEvent(io, chatId, "message received", message);
+    
+    // Notify specific receiver
+    const receiverSocketId = io.sockets.adapter.users?.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("new message notification", {
+        chatId,
+        message: message,
+      });
+    }
+
+    // Stopped typing 
+    emitSocketEvent(io, chatId, "stop typing", req.user._id);
+
     res.json(message);
   } catch (error) {
     res.status(400);
@@ -58,7 +79,6 @@ const sendMessage = expressAsyncHandler(async (req, res) => {
   }
 });
 
-// Uploading file messages to Cloudinary and saving it to database
 const uploadFileMessage = expressAsyncHandler(async (req, res) => {
   const { chatId, receiverId } = req.body;
 
@@ -68,30 +88,27 @@ const uploadFileMessage = expressAsyncHandler(async (req, res) => {
   }
 
   try {
-    // Uploading file to Cloudinary
     const uploadedFile = await cloudinary.uploader.upload(req.file.path, {
       resource_type: "auto",
       folder: "chat_uploads",
     });
 
-    
-    const fileBuffer = req.file.buffer; // Use multer's buffer to get file content
+    const fileBuffer = req.file.buffer;
 
-    // Prepare message data with content or file buffer
     const newMessage = {
       sender: req.user._id,
-      receiver: receiverId, 
-      content: uploadedFile.secure_url, 
+      receiver: receiverId,
+      content: uploadedFile.secure_url,
       isFile: true,
       fileType: req.file.mimetype,
       fileName: req.file.originalname,
-      fileContent: fileBuffer.toString("base64"), 
+      fileContent: fileBuffer.toString("base64"),
     };
 
     let message = await Message.create(newMessage);
 
     message = await message.populate("sender", "name pic");
-    message = await message.populate("receiver", "name pic"); 
+    message = await message.populate("receiver", "name pic");
     message = await message.populate("chat");
     message = await User.populate(message, {
       path: "chat.users",
@@ -100,6 +117,18 @@ const uploadFileMessage = expressAsyncHandler(async (req, res) => {
 
     await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
 
+    const io = req.app.get('io');
+    emitSocketEvent(io, chatId, "file message received", message);
+    
+    // Notify specific receiver about file
+    const receiverSocketId = io.sockets.adapter.users?.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("new file notification", {
+        chatId,
+        message: message,
+      });
+    }
+
     res.json(message);
   } catch (error) {
     console.error("Error uploading file message:", error.message);
@@ -107,20 +136,19 @@ const uploadFileMessage = expressAsyncHandler(async (req, res) => {
   }
 });
 
-
 const getRecipientName = async (req, res) => {
-  const { chat_id } = req.params; 
-  const userId = req.user._id; 
+  const { chat_id } = req.params;
+  const userId = req.user._id;
   try {
-    // Fetching the chat by ID
     const chat = await Chat.findById(chat_id).populate("users", "name");
 
     if (!chat) {
       return res.status(404).json({ message: "Chat not found" });
     }
 
-    // Filter to find the recipient (the other user in the chat)
-    const recipient = chat.users.find((user) => user._id.toString() !== userId.toString());
+    const recipient = chat.users.find(
+      (user) => user._id.toString() !== userId.toString()
+    );
 
     if (!recipient) {
       return res.status(404).json({ message: "Recipient not found" });
@@ -133,4 +161,54 @@ const getRecipientName = async (req, res) => {
   }
 };
 
-module.exports = { allMessages, sendMessage, uploadFileMessage, getRecipientName };
+
+const handleTyping = expressAsyncHandler(async (req, res) => {
+  const { chatId, isTyping } = req.body;
+  
+  const io = req.app.get('io');
+  const eventName = isTyping ? "typing" : "stop typing";
+  
+  emitSocketEvent(io, chatId, eventName, {
+    userId: req.user._id,
+    chatId
+  });
+  
+  res.sendStatus(200);
+});
+
+
+const markMessageAsRead = expressAsyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+  
+  try {
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    if (!message.readBy.includes(req.user._id)) {
+      message.readBy.push(req.user._id);
+      await message.save();
+
+      const io = req.app.get('io');
+      emitSocketEvent(io, message.chat.toString(), "message read", {
+        messageId,
+        readBy: req.user._id
+      });
+    }
+
+    res.json(message);
+  } catch (error) {
+    res.status(400);
+    throw new Error(error.message);
+  }
+});
+
+module.exports = { 
+  allMessages, 
+  sendMessage, 
+  uploadFileMessage, 
+  getRecipientName,
+  handleTyping,
+  markMessageAsRead
+};

@@ -9,6 +9,7 @@ const socketIO = require("socket.io");
 const jwt = require("jsonwebtoken");
 
 const app = express();
+app.set('io', io);
 const server = http.createServer(app);
 
 dotenv.config();
@@ -22,7 +23,6 @@ const allowedOrigins = [
   "https://connect-chat-online.vercel.app",
   "http://localhost:3000"
 ];
-
 
 app.options("*", cors()); 
 
@@ -70,7 +70,6 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-
 app.use("/user", userRoutes);
 app.use("/chat", chatRoutes);
 app.use("/message", messageRoutes);
@@ -104,13 +103,73 @@ io.on("connection", (socket) => {
   // Store user's socket ID
   activeUsers.set(socket.user._id, socket.id);
 
-  // Join a room for private chats
+  // Emit online status to all users
+  io.emit("user online", socket.user._id);
+
+  // Join user to their active chats
+  socket.on("setup", (userData) => {
+    socket.join(userData._id);
+    socket.emit("connected");
+  });
+
+  // Join a chat room
   socket.on("join chat", (room) => {
     socket.join(room);
     console.log("User joined room:", room);
   });
 
-  // Call signaling events
+  // Leave a chat room
+  socket.on("leave chat", (room) => {
+    socket.leave(room);
+    console.log("User left room:", room);
+  });
+
+  // New message handling
+  socket.on("new message", (newMessageReceived) => {
+    var chat = newMessageReceived.chat;
+
+    if (!chat.users) return console.log("chat.users not defined");
+
+    chat.users.forEach((user) => {
+      if (user._id === newMessageReceived.sender._id) return;
+
+      // Emit to user's socket ID if online
+      const targetSocketId = activeUsers.get(user._id);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("message received", newMessageReceived);
+      }
+
+      // Also emit to the chat room
+      socket.in(chat._id).emit("message received", newMessageReceived);
+    });
+  });
+
+  // Group chat message handling
+  socket.on("new group message", (message) => {
+    const chat = message.chat;
+    
+    if (!chat.isGroupChat) return;
+
+    // Broadcast to all users in the group except sender
+    socket.to(chat._id).emit("group message received", message);
+  });
+
+  // Typing indicators
+  socket.on("typing", (room) => {
+    socket.in(room).emit("typing", {
+      room: room,
+      user: socket.user._id
+    });
+  });
+
+  socket.on("stop typing", (room) => {
+    socket.in(room).emit("stop typing", {
+      room: room,
+      user: socket.user._id
+    });
+  });
+
+ 
   socket.on("call-offer", (data) => {
     const targetSocketId = activeUsers.get(data.to);
     if (targetSocketId) {
@@ -151,28 +210,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Message handling
-  socket.on("new message", (newMessageReceived) => {
-    const chat = newMessageReceived.chat;
-
-    if (!chat.users) return console.error("Chat.users not defined");
-
-    chat.users.forEach((user) => {
-      if (user._id === newMessageReceived.sender._id) return;
-
-      const targetSocketId = activeUsers.get(user._id);
-      if (targetSocketId) {
-        io.to(targetSocketId).emit("message received", newMessageReceived);
-      }
-    });
-  });
-
-
-  socket.on("typing", (room) => socket.in(room).emit("typing"));
-  socket.on("stop typing", (room) => socket.in(room).emit("stop typing"));
-
+  // Handle disconnection
   socket.on("disconnect", () => {
+    // Remove user from active users
     activeUsers.delete(socket.user._id);
+    
+    // Emit offline status to all users
+    io.emit("user offline", socket.user._id);
+    
     console.log("User disconnected:", socket.user._id);
   });
 });
