@@ -13,44 +13,41 @@ const server = http.createServer(app);
 
 dotenv.config();
 
-defaultOrigins = [
-  "https://connect-chat-online.vercel.app",
-  "http://localhost:3000"
-];
-
 const allowedOrigins = [
   "https://connect-chat-online.vercel.app",
   "http://localhost:3000"
 ];
-
-app.options("*", cors()); 
 
 const io = socketIO(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
+    transports: ["websocket", "polling"],
   },
 });
 
 app.set('io', io);
 
-app.use(
-  cors({
-    origin: allowedOrigins,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  })
-);
-
+// Middleware
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+}));
 app.use(express.json());
 
 // Static file handling
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Routes
 const userRoutes = require("./Routes/userRoutes");
 const chatRoutes = require("./Routes/chatRoutes");
 const messageRoutes = require("./Routes/messageRoutes");
+
+app.use("/user", userRoutes);
+app.use("/chat", chatRoutes);
+app.use("/message", messageRoutes);
 
 // MongoDB connection
 const connectDb = async () => {
@@ -62,7 +59,7 @@ const connectDb = async () => {
     console.log("Server is Connected to Database");
   } catch (err) {
     console.error("Server is NOT connected to Database", err.message);
-    process.exit(1);
+    setTimeout(connectDb, 5000); // Retry after 5 seconds
   }
 };
 connectDb();
@@ -71,15 +68,11 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-app.use("/user", userRoutes);
-app.use("/chat", chatRoutes);
-app.use("/message", messageRoutes);
-
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
-// Socket.io middleware for authentication
+// Socket.io authentication middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) {
@@ -91,6 +84,7 @@ io.use((socket, next) => {
     socket.user = decoded;
     next();
   } catch (error) {
+    console.error("JWT verification error:", error.message);
     return next(new Error("Authentication error: Invalid token"));
   }
 });
@@ -127,7 +121,7 @@ io.on("connection", (socket) => {
 
   // New message handling
   socket.on("new message", (newMessageReceived) => {
-    var chat = newMessageReceived.chat;
+    const chat = newMessageReceived.chat;
 
     if (!chat.users) return console.log("chat.users not defined");
 
@@ -141,84 +135,29 @@ io.on("connection", (socket) => {
       }
 
       // Also emit to the chat room
-      socket.in(chat._id).emit("message received", newMessageReceived);
+      socket.to(chat._id).emit("message received", newMessageReceived);
     });
-  });
-
-  // Group chat message handling
-  socket.on("new group message", (message) => {
-    const chat = message.chat;
-    
-    if (!chat.isGroupChat) return;
-
-    // Broadcast to all users in the group except sender
-    socket.to(chat._id).emit("group message received", message);
   });
 
   // Typing indicators
   socket.on("typing", (room) => {
-    socket.in(room).emit("typing", {
-      room: room,
-      user: socket.user._id
+    socket.to(room).emit("typing", {
+      room,
+      user: socket.user._id,
     });
   });
 
   socket.on("stop typing", (room) => {
-    socket.in(room).emit("stop typing", {
-      room: room,
-      user: socket.user._id
+    socket.to(room).emit("stop typing", {
+      room,
+      user: socket.user._id,
     });
-  });
-
- 
-  socket.on("call-offer", (data) => {
-    const targetSocketId = activeUsers.get(data.to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("call-offer", {
-        offer: data.offer,
-        from: socket.user._id,
-        isVideo: data.isVideo,
-      });
-    }
-  });
-
-  socket.on("call-answer", (data) => {
-    const targetSocketId = activeUsers.get(data.to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("call-answer", {
-        answer: data.answer,
-        from: socket.user._id,
-      });
-    }
-  });
-
-  socket.on("ice-candidate", (data) => {
-    const targetSocketId = activeUsers.get(data.to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("ice-candidate", {
-        candidate: data.candidate,
-        from: socket.user._id,
-      });
-    }
-  });
-
-  socket.on("end-call", (data) => {
-    const targetSocketId = activeUsers.get(data.to);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("call-ended", {
-        from: socket.user._id,
-      });
-    }
   });
 
   // Handle disconnection
   socket.on("disconnect", () => {
-    // Remove user from active users
     activeUsers.delete(socket.user._id);
-    
-    // Emit offline status to all users
     io.emit("user offline", socket.user._id);
-    
     console.log("User disconnected:", socket.user._id);
   });
 });

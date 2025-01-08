@@ -25,7 +25,7 @@ router.post("/upload-multiple", protect, upload.array("files", 5), handleUploadE
 });
 router.get("/recipient/:chat_id", protect, getRecipientName);
 
-router.route("/typing").post(protect, handleTyping);
+router.route("/message/typing").post(protect, handleTyping);
 router.route("/read/:messageId").put(protect, markMessageAsRead);
 
 module.exports = router;
