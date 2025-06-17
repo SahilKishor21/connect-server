@@ -1,29 +1,56 @@
- const mongoose = require("mongoose");
- const bcrypt = require('bcrypt');
- const saltRounds = 10;
- const userModel = mongoose.Schema({
-    name : {
+const mongoose = require("mongoose");
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+
+// FIXED: Define userSchema (was userModel before)
+const userSchema = mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
+    },
+    password: {
         type: String,
         required: true,
     },
-    email : {
+    pic: {
         type: String,
-        required: true,
+        default: ""
     },
-    password : {
+    profilePicture: {
         type: String,
-        required: true,
+        default: ""
     },
- },
- {
-    timeStamp: true,
+    isOnline: {
+        type: Boolean,
+        default: false
+    },
+    lastSeen: {
+        type: Date,
+        default: Date.now
+    }
+}, {
+    timestamps: true, 
 });
 
-userModel.methods.matchPassword = async function (enteredPassword){
+userSchema.index({ email: 1 });
+userSchema.index({ name: 1 });
+userSchema.index({ isOnline: 1 });
+
+
+userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
-userModel.pre("save", async function (next) {
-    if (!this.isModified) {
+
+userSchema.pre("save", async function (next) {
+    if (!this.isModified('password')) {
         next();
     }
 
@@ -31,5 +58,7 @@ userModel.pre("save", async function (next) {
     this.password = await bcrypt.hash(this.password, salt);
 });
 
-const User = mongoose.model("User", userModel);
+
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+
 module.exports = User;

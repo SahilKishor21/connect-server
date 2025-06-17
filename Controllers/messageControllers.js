@@ -204,11 +204,69 @@ const markMessageAsRead = expressAsyncHandler(async (req, res) => {
   }
 });
 
+
+const sendGroupNotification = expressAsyncHandler(async (req, res) => {
+  const { content, chatId, userId, notificationType } = req.body;
+
+  if (!content || !chatId) {
+    console.log("Invalid data passed into notification request");
+    return res.sendStatus(400);
+  }
+
+  // Create a system notification message
+  const notificationMessage = {
+    sender: null, // System message, no specific sender
+    receiver: null, // Group message, no specific receiver
+    content: content,
+    chat: chatId,
+    isNotification: true,
+    notificationType: notificationType || 'group_leave',
+    createdAt: new Date()
+  };
+
+  try {
+    let message = await Message.create(notificationMessage);
+
+    // Populate the chat details
+    message = await message.populate("chat");
+    message = await User.populate(message, {
+      path: "chat.users",
+      select: "name email",
+    });
+
+    // Update the latest message for the chat
+    await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
+
+    // Emit socket event to all users in the group
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatId).emit("notification received", {
+        message: message,
+        chatId: chatId,
+        type: notificationType || 'group_leave'
+      });
+    }
+
+    res.json(message);
+  } catch (error) {
+    console.error("Error sending group notification:", error);
+    res.status(400);
+    throw new Error(error.message);
+  }
+});
+
+
+
+
+
 module.exports = { 
   allMessages, 
   sendMessage, 
   uploadFileMessage, 
   getRecipientName,
   handleTyping,
-  markMessageAsRead
+  markMessageAsRead,
+  sendGroupNotification,
+ 
+
 };
