@@ -86,7 +86,7 @@ const fetchChats = asyncHandler(async (req, res) => {
   try {
     Chat.find({ users: { $elemMatch: { $eq: req.user._id } } })
       .populate("users", "-password")
-      .populate("groupAdmin", "-password")
+      .populate("groupAdmin", "-password") // Make sure this is populated
       .populate("latestMessage")
       .sort({ updatedAt: -1 })
       .then(async (results) => {
@@ -110,6 +110,7 @@ const fetchChatDetailsController = async (req, res) => {
 
     const chat = await Chat.findById(chatId)
       .populate("users", "-password")
+      .populate("groupAdmin", "-password") // Make sure groupAdmin is populated
       .populate("latestMessage");
 
     if (!chat) {
@@ -127,6 +128,7 @@ const fetchChatDetailsController = async (req, res) => {
     }
 
     console.log("✅ Found chat with users:", chat.users.map(u => `${u._id}:${u.name}`));
+    console.log("✅ Group admin:", chat.groupAdmin); // Debug log
     res.json(chat);
 
   } catch (error) {
@@ -134,7 +136,6 @@ const fetchChatDetailsController = async (req, res) => {
     res.status(500).json({ message: "Server error while fetching chat" });
   }
 };
-
 const fetchGroups = asyncHandler(async (req, res) => {
   try {
     const allGroups = await Chat.where("isGroupChat").equals(true);
@@ -151,19 +152,19 @@ const createGroupChat = asyncHandler(async (req, res) => {
   }
 
   var users = JSON.parse(req.body.users);
-  users.push(req.user);
+  users.push(req.user._id); // Use req.user._id instead of req.user
 
   try {
     const groupChat = await Chat.create({
       chatName: req.body.name,
       users: users,
       isGroupChat: true,
-      groupAdmin: req.user,
+      groupAdmin: req.user._id, // Use req.user._id instead of req.user
     });
 
     const fullGroupChat = await Chat.findOne({ _id: groupChat._id })
       .populate("users", "-password")
-      .populate("groupAdmin", "-password");
+      .populate("groupAdmin", "-password"); // Make sure this is populated
 
     res.status(200).json(fullGroupChat);
   } catch (error) {
@@ -236,8 +237,8 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
 
     const notificationContent = `${user.name} has left the group`;
     const notificationMessage = {
-      sender: userId,
-      receiver: userId,
+      sender: null, // Fixed: should be null for system notifications
+      receiver: null, // Fixed: should be null for system notifications
       content: notificationContent,
       chat: chatId,
       isNotification: true,
@@ -245,8 +246,6 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
     };
 
     let message = await Message.create(notificationMessage);
-    message = await message.populate("sender", "name");
-    message = await message.populate("receiver", "name");
     message = await message.populate("chat");
     message = await User.populate(message, {
       path: "chat.users",
@@ -289,6 +288,229 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
   }
 });
 
+// Remove user from group (Admin only)
+const removeUserFromGroup = asyncHandler(async (req, res) => {
+  const { chatId, userId, userIdToRemove } = req.body;
+
+  if (!chatId || !userId || !userIdToRemove) {
+    return res.status(400).json({ message: "ChatId, userId, and userIdToRemove are required" });
+  }
+
+  try {
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ message: "Chat not found" });
+    }
+
+    if (chat.groupAdmin.toString() !== userId) {
+      return res.status(403).json({ message: "Only group admin can remove users" });
+    }
+
+    if (userId === userIdToRemove) {
+      return res.status(400).json({ message: "Admin cannot remove themselves. Transfer admin rights first." });
+    }
+    const userToRemove = await User.findById(userIdToRemove).select("name");
+    const adminUser = await User.findById(userId).select("name");
+
+    const updatedChat = await Chat.findByIdAndUpdate(
+      chatId,
+      { $pull: { users: userIdToRemove } },
+      { new: true }
+    )
+      .populate("users", "-password")
+      .populate("groupAdmin", "-password");
+
+    const notificationContent = `${userToRemove.name} was removed from the group by ${adminUser.name}`;
+    const notificationMessage = {
+      sender: null,
+      receiver: null,
+      content: notificationContent,
+      chat: chatId,
+      isNotification: true,
+      notificationType: 'user_removed',
+    };
+
+    let message = await Message.create(notificationMessage);
+    message = await message.populate("chat");
+    await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatId).emit("user removed from group", {
+        chatId,
+        removedUserId: userIdToRemove,
+        removedUserName: userToRemove.name,
+        adminName: adminUser.name,
+        updatedChat
+      });
+
+      io.to(chatId).emit("notification received", {
+        message,
+        chatId,
+        type: 'user_removed'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "User removed successfully",
+      chat: updatedChat
+    });
+
+  } catch (error) {
+    console.error("Error removing user from group:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+const addUserToGroup = asyncHandler(async (req, res) => {
+  const { chatId, userId, userIdToAdd } = req.body;
+
+  try {
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ message: "Chat not found" });
+    }
+
+    if (chat.groupAdmin.toString() !== userId) {
+      return res.status(403).json({ message: "Only group admin can add users" });
+    }
+
+    if (chat.users.includes(userIdToAdd)) {
+      return res.status(400).json({ message: "User is already in the group" });
+    }
+
+    const userToAdd = await User.findById(userIdToAdd).select("name");
+    const adminUser = await User.findById(userId).select("name");
+
+    const updatedChat = await Chat.findByIdAndUpdate(
+      chatId,
+      { $push: { users: userIdToAdd } },
+      { new: true }
+    )
+      .populate("users", "-password")
+      .populate("groupAdmin", "-password");
+
+    // Create notification
+    const notificationContent = `${userToAdd.name} was added to the group by ${adminUser.name}`;
+    const notificationMessage = {
+      sender: null,
+      receiver: null,
+      content: notificationContent,
+      chat: chatId,
+      isNotification: true,
+      notificationType: 'user_added',
+    };
+
+    let message = await Message.create(notificationMessage);
+    await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatId).emit("user added to group", {
+        chatId,
+        addedUserId: userIdToAdd,
+        addedUserName: userToAdd.name,
+        updatedChat
+      });
+    }
+
+    res.json({ success: true, chat: updatedChat });
+
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+const changeGroupAdmin = asyncHandler(async (req, res) => {
+  const { chatId, currentAdminId, newAdminId } = req.body;
+
+  try {
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ message: "Chat not found" });
+    }
+
+    if (chat.groupAdmin.toString() !== currentAdminId) {
+      return res.status(403).json({ message: "Only current admin can transfer admin rights" });
+    }
+
+    if (!chat.users.includes(newAdminId)) {
+      return res.status(400).json({ message: "New admin must be a group member" });
+    }
+
+    const currentAdmin = await User.findById(currentAdminId).select("name");
+    const newAdmin = await User.findById(newAdminId).select("name");
+
+    const updatedChat = await Chat.findByIdAndUpdate(
+      chatId,
+      { groupAdmin: newAdminId },
+      { new: true }
+    )
+      .populate("users", "-password")
+      .populate("groupAdmin", "-password");
+
+    // Create notification
+    const notificationContent = `${newAdmin.name} is now the group admin`;
+    const notificationMessage = {
+      sender: null,
+      receiver: null,
+      content: notificationContent,
+      chat: chatId,
+      isNotification: true,
+      notificationType: 'admin_changed',
+    };
+
+    let message = await Message.create(notificationMessage);
+    await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatId).emit("admin changed", {
+        chatId,
+        newAdminId,
+        newAdminName: newAdmin.name,
+        updatedChat
+      });
+    }
+
+    res.json({ success: true, chat: updatedChat });
+
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+const debugGroupChat = asyncHandler(async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const chat = await Chat.findById(chatId)
+      .populate("users", "-password")
+      .populate("groupAdmin", "-password");
+    
+    console.log("🔍 Debug Chat:", {
+      chatId: chat._id,
+      chatName: chat.chatName,
+      isGroupChat: chat.isGroupChat,
+      groupAdmin: chat.groupAdmin,
+      users: chat.users.map(u => ({ id: u._id, name: u.name }))
+    });
+    
+    res.json({
+      chatId: chat._id,
+      chatName: chat.chatName,
+      isGroupChat: chat.isGroupChat,
+      groupAdmin: chat.groupAdmin,
+      users: chat.users
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
 module.exports = {
   accessChat,
   fetchChats,
@@ -296,5 +518,9 @@ module.exports = {
   createGroupChat,
   groupExit,
   fetchChatDetailsController,
-  groupExitWithNotification
+  groupExitWithNotification,
+  removeUserFromGroup,
+  addUserToGroup,
+  changeGroupAdmin,
+  debugGroupChat
 };
