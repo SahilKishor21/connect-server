@@ -28,6 +28,7 @@ const io = socketIO(server, {
 });
 
 app.set('io', io);
+global.io = io; 
 
 app.use(cors({
   origin: allowedOrigins,

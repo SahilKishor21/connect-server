@@ -208,8 +208,6 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
   }
 
   try {
-    console.log('🔄 Processing group exit for user:', userId, 'from chat:', chatId);
-
     const user = await User.findById(userId).select("name");
     
     if (!user) {
@@ -268,10 +266,9 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
 
     await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
 
-    const io = req.app.get('io');
+    // FIXED: Use your existing io instance
+    const io = req.app.get('io') || global.io;
     if (io) {
-      console.log('📡 Emitting socket events for group exit');
-      
       io.to(chatId).emit("user left group", {
         chatId: chatId,
         userId: userId,
@@ -284,11 +281,7 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
         chatId: chatId,
         type: 'group_leave'
       });
-    } else {
-      console.log('⚠️ Socket.io not available');
     }
-
-    console.log(`✅ User ${user.name} (${userId}) left group ${chatId}`);
 
     res.json({
       success: true,
@@ -307,6 +300,8 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
   }
 });
 
+
+
 const removeUserFromGroup = asyncHandler(async (req, res) => {
   const { chatId, userId, userIdToRemove } = req.body;
 
@@ -318,8 +313,6 @@ const removeUserFromGroup = asyncHandler(async (req, res) => {
   }
 
   try {
-    console.log('🔄 Processing user removal:', { chatId, userId, userIdToRemove });
-
     const chat = await Chat.findById(chatId);
     if (!chat) {
       return res.status(404).json({ 
@@ -341,16 +334,9 @@ const removeUserFromGroup = asyncHandler(async (req, res) => {
         message: "Admin cannot remove themselves. Transfer admin rights first." 
       });
     }
-
+    
     const userToRemove = await User.findById(userIdToRemove).select("name");
     const adminUser = await User.findById(userId).select("name");
-
-    if (!userToRemove || !adminUser) {
-      return res.status(404).json({ 
-        success: false,
-        message: "User not found" 
-      });
-    }
 
     const updatedChat = await Chat.findByIdAndUpdate(
       chatId,
@@ -359,13 +345,6 @@ const removeUserFromGroup = asyncHandler(async (req, res) => {
     )
       .populate("users", "-password")
       .populate("groupAdmin", "-password");
-
-    if (!updatedChat) {
-      return res.status(500).json({ 
-        success: false,
-        message: "Failed to update chat" 
-      });
-    }
 
     const notificationContent = `${userToRemove.name} was removed from the group by ${adminUser.name}`;
     const notificationMessage = {
@@ -381,10 +360,9 @@ const removeUserFromGroup = asyncHandler(async (req, res) => {
     message = await message.populate("chat");
     await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
 
-    const io = req.app.get('io');
+    // FIXED: Use your existing io instance
+    const io = req.app.get('io') || global.io;
     if (io) {
-      console.log('📡 Emitting socket events for user removal');
-      
       io.to(chatId).emit("user removed from group", {
         chatId,
         removedUserId: userIdToRemove,
@@ -400,16 +378,14 @@ const removeUserFromGroup = asyncHandler(async (req, res) => {
       });
     }
 
-    console.log(`✅ User ${userToRemove.name} removed by ${adminUser.name} from group ${chatId}`);
-
     res.json({
       success: true,
-      message: "User removed successfully",
+      message: `${userToRemove.name} has been removed from the group`,
       chat: updatedChat
     });
 
   } catch (error) {
-    console.error("❌ Error removing user from group:", error);
+    console.error("Error removing user from group:", error);
     res.status(500).json({ 
       success: false,
       message: "Server error", 
@@ -523,16 +499,7 @@ const addUserToGroup = asyncHandler(async (req, res) => {
 const changeGroupAdmin = asyncHandler(async (req, res) => {
   const { chatId, currentAdminId, newAdminId } = req.body;
 
-  if (!chatId || !currentAdminId || !newAdminId) {
-    return res.status(400).json({ 
-      success: false,
-      message: "ChatId, currentAdminId, and newAdminId are required" 
-    });
-  }
-
   try {
-    console.log('🔄 Processing admin change:', { chatId, currentAdminId, newAdminId });
-
     const chat = await Chat.findById(chatId);
     if (!chat) {
       return res.status(404).json({ 
@@ -558,13 +525,6 @@ const changeGroupAdmin = asyncHandler(async (req, res) => {
     const currentAdmin = await User.findById(currentAdminId).select("name");
     const newAdmin = await User.findById(newAdminId).select("name");
 
-    if (!currentAdmin || !newAdmin) {
-      return res.status(404).json({ 
-        success: false,
-        message: "User not found" 
-      });
-    }
-
     const updatedChat = await Chat.findByIdAndUpdate(
       chatId,
       { groupAdmin: newAdminId },
@@ -586,34 +546,24 @@ const changeGroupAdmin = asyncHandler(async (req, res) => {
     let message = await Message.create(notificationMessage);
     await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
 
-    const io = req.app.get('io');
+    // FIXED: Use your existing io instance
+    const io = req.app.get('io') || global.io;
     if (io) {
-      console.log('📡 Emitting socket events for admin change');
-      
       io.to(chatId).emit("admin changed", {
         chatId,
         newAdminId,
         newAdminName: newAdmin.name,
         updatedChat
       });
-
-      io.to(chatId).emit("notification received", {
-        message,
-        chatId,
-        type: 'admin_changed'
-      });
     }
 
-    console.log(`✅ Admin changed from ${currentAdmin.name} to ${newAdmin.name} in group ${chatId}`);
-
     res.json({ 
-      success: true,
-      message: "Admin changed successfully",
+      success: true, 
+      message: `${newAdmin.name} is now the group admin`,
       chat: updatedChat 
     });
 
   } catch (error) {
-    console.error("❌ Error changing group admin:", error);
     res.status(500).json({ 
       success: false,
       message: "Server error", 
