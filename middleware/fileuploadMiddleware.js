@@ -4,14 +4,12 @@ const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 require("dotenv").config();
 
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure Cloudinary storage
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -21,7 +19,6 @@ const storage = new CloudinaryStorage({
   },
 });
 
-// File filter function
 const fileFilter = (req, file, cb) => {
   const allowedTypes = {
     image: ["image/jpeg", "image/png", "image/gif"],
@@ -32,9 +29,8 @@ const fileFilter = (req, file, cb) => {
   const allAllowedTypes = Object.values(allowedTypes).flat();
 
   if (allAllowedTypes.includes(file.mimetype)) {
-    // Set resource type for Cloudinary
     if (file.mimetype.startsWith("audio/")) {
-      req.resourceType = "video"; // Cloudinary uses 'video' type for audio
+      req.resourceType = "video";
     } else if (file.mimetype.startsWith("image/")) {
       req.resourceType = "image";
     } else {
@@ -46,16 +42,14 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Create multer instance
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 15 * 1024 * 1024, // 15MB as max size
+    fileSize: 15 * 1024 * 1024,
   },
 });
 
-// Error handling middleware
 const handleUploadError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {

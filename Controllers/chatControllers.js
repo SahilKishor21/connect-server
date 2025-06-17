@@ -1,4 +1,3 @@
-// chatControllers.js
 const asyncHandler = require("express-async-handler");
 const Chat = require("../modals/chatModel");
 const User = require("../modals/userModel");
@@ -7,7 +6,6 @@ const Message = require("../modals/messageModel");
 const accessChat = asyncHandler(async (req, res) => {
   const { userId, isGroup, chatId } = req.body;
 
-  
   if (isGroup && chatId) {
     try {
       const groupChat = await Chat.findById(chatId);
@@ -15,7 +13,6 @@ const accessChat = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: "Group chat not found" });
       }
 
-      // Checking if user is already in the group
       if (groupChat.users.includes(req.user._id)) {
         const populatedChat = await Chat.findOne({ _id: chatId })
           .populate("users", "-password")
@@ -25,7 +22,6 @@ const accessChat = asyncHandler(async (req, res) => {
         return res.status(200).json(populatedChat);
       }
 
-      // Add user to group
       const updatedChat = await Chat.findByIdAndUpdate(
         chatId,
         {
@@ -44,7 +40,6 @@ const accessChat = asyncHandler(async (req, res) => {
     }
   }
 
-  //  one-on-one chating
   if (!userId) {
     return res.status(400).json({ message: "UserId param not sent with request" });
   }
@@ -110,7 +105,7 @@ const fetchChats = asyncHandler(async (req, res) => {
 const fetchChatDetailsController = async (req, res) => {
   try {
     const { chatId } = req.params;
-    
+
     console.log("🔍 Fetching chat details for chat ID:", chatId);
 
     const chat = await Chat.findById(chatId)
@@ -122,7 +117,6 @@ const fetchChatDetailsController = async (req, res) => {
       return res.status(404).json({ message: "Chat not found" });
     }
 
-    // Check if user is part of this chat
     const isUserInChat = chat.users.some(user => 
       user._id.toString() === req.user._id.toString()
     );
@@ -209,25 +203,21 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
   }
 
   try {
-    // First, get the user details before removing
     const user = await User.findById(userId).select("name");
     
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Get the chat to verify it exists and user is a member
     const chat = await Chat.findById(chatId);
     if (!chat) {
       return res.status(404).json({ message: "Chat not found" });
     }
 
-    // Check if user is actually in the chat
     if (!chat.users.includes(userId)) {
       return res.status(400).json({ message: "User is not a member of this chat" });
     }
 
-    // Remove user from group
     const updatedChat = await Chat.findByIdAndUpdate(
       chatId,
       {
@@ -244,18 +234,16 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
       return res.status(404).json({ message: "Failed to update chat" });
     }
 
-    // Create notification message using the leaving user as sender
     const notificationContent = `${user.name} has left the group`;
     const notificationMessage = {
-      sender: userId, // Use the leaving user as sender
-      receiver: userId, // Use the leaving user as receiver 
+      sender: userId,
+      receiver: userId,
       content: notificationContent,
       chat: chatId,
       isNotification: true,
       notificationType: 'group_leave',
     };
 
-    // Save notification message
     let message = await Message.create(notificationMessage);
     message = await message.populate("sender", "name");
     message = await message.populate("receiver", "name");
@@ -265,13 +253,10 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
       select: "name email",
     });
 
-    // Update latest message
     await Chat.findByIdAndUpdate(chatId, { latestMessage: message });
 
-    // Emit socket events
     const io = req.app.get('io');
     if (io) {
-      // Notify remaining group members about user leaving
       io.to(chatId).emit("user left group", {
         chatId: chatId,
         userId: userId,
@@ -279,7 +264,6 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
         updatedChat: updatedChat
       });
 
-      // Send notification message to remaining members
       io.to(chatId).emit("notification received", {
         message: message,
         chatId: chatId,
@@ -304,7 +288,6 @@ const groupExitWithNotification = asyncHandler(async (req, res) => {
     });
   }
 });
-
 
 module.exports = {
   accessChat,

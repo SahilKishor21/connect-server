@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
 
-// FIXED: Define userSchema (was userModel before)
 const userSchema = mongoose.Schema({
     name: {
         type: String,
